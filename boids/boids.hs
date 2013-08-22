@@ -221,7 +221,8 @@ oneboid b boids =
       p = position b
       v = velocity b
       id = identifier b
-      v' = vecAdd v (vecScale (vecAdd c (vecAdd s a)) 0.1)
+      v' = vecAdd (vecAdd v (vecScale (vecAdd c (vecAdd s a)) 0.1))
+                  (edge_repel p)
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
   in
@@ -231,6 +232,20 @@ oneboid b boids =
           dbgC = c,
           dbgS = s,
           dbgA = a}
+
+
+-- Fear edges
+-- Pos -> Delta Velocity
+edge_repel :: Vec2 -> Vec2
+edge_repel (Vec2 x y) = Vec2 (repel x maxx minx) (repel y maxy miny)
+
+      -- Pos    -> Bound  -> Bound  -> Accel
+repel :: Double -> Double -> Double -> Double
+repel x maxx minx | (x - minx) < cap =   c / (x - minx)**2
+                  | (maxx - x) < cap =  -c / (maxx - x)**2
+                  | otherwise = 0
+    where c = 0.001
+          cap = 2
 
 --
 -- Neighbor finding code
