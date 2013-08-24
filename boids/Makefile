@@ -1,5 +1,8 @@
 all:
-	ghc --make -O2 -fforce-recomp boids.hs
+	cabal build
+
+run:
+	dist/build/hel-boids/hel-boids
 
 clean:
 	rm -f boids
