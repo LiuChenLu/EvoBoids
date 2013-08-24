@@ -86,8 +86,8 @@ renderboid world b =
         Line [(xs,ys), ((xs+(sf'*realToFrac dSX)),(ys+(sf'*realToFrac dSY)))]
     ]
 
-renderboids :: World -> KDTreeNode Boid -> IO Picture
-renderboids world bs = do return (Pictures $ mapKDTree bs (renderboid world))
+renderboids :: World -> KDTreeNode Boid -> Picture
+renderboids world bs =  (Pictures $ mapKDTree bs (renderboid world))
 
 {--
 
@@ -325,10 +325,9 @@ wraparound (Vec2 x y) =
      y' = if (y>maxy) then y-h else (if y<miny then y+h else y)
  in Vec2 x' y'
 
-iterationkd :: ViewPort -> Float -> KDTreeNode Boid -> IO (KDTreeNode Boid)
-iterationkd vp step w = do
+iterationkd vp step w =
   let boids = mapKDTree w (\i -> oneboid i (findNeighbors w i))
-  return $ foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
+  in foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
     
 iteration :: ViewPort -> Float -> KDTreeNode Boid -> KDTreeNode Boid
 iteration vp step w =
@@ -342,7 +341,7 @@ main = do
   let w = World { width = (maxx-minx), height = (maxy-miny), pixWidth = 700, pixHeight = 700 }
   bs <- initialize 100 10.0 0.5
   let t = foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs
-  simulateIO
+  simulate
     (InWindow "Boids" (pixWidth w, pixHeight w) (10,10))
     (greyN 0.1)
     30 
