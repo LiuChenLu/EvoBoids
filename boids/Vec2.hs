@@ -2,7 +2,7 @@
 module Vec2 where
 
 data Vec2 = Vec2 {-# UNPACK #-}!Double {-# UNPACK #-}!Double
-  deriving Show
+  deriving (Show, Eq)
 
 vecZero :: Vec2
 vecZero = Vec2 0.0 0.0

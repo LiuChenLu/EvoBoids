@@ -13,12 +13,12 @@ data Boid = Boid { identifier :: Int,
                    velocity :: Vec2, 
                    dbgC :: Vec2,
                    dbgS :: Vec2,
-                   dbgA :: Vec2 } deriving Show
+                   dbgA :: Vec2 } deriving (Eq, Show)
 
 data World = World { width :: Double,
                      height :: Double,
                      pixWidth :: Int,
-                     pixHeight :: Int } deriving Show
+                     pixHeight :: Int } deriving (Eq, Show)
 
 {--
 
@@ -223,9 +223,7 @@ oneboid b boids =
                   (edge_repel p)
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
-  in
-   Boid { identifier = id,
-          position = wraparound p',
+  in  b { position = wraparound p',
           velocity = v'', 
           dbgC = c,
           dbgS = s,
