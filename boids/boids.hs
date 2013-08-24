@@ -97,15 +97,14 @@ INITIALIZATION
 
 --}
 
-rnlist :: Int -> IO [Double]
-rnlist n = do
-  mapM (\_ -> randomRIO (0.0,1.0)) [1..n]
+rnlist :: Int -> Double -> Double-> IO [Double]
+rnlist n low high = do
+  mapM (\_ -> randomRIO (low, high)) [1..n]
 
-initialize :: Int -> Double -> Double -> [Boid]
-initialize n sp sv =
-  let nums = unsafePerformIO $ rnlist (n*6) 
-      nums' = map (\i -> (0.5 - i)/2.0) nums
-      makeboids [] [] = []
+initialize :: Int -> Double -> Double -> IO [Boid]
+initialize n sp sv = do
+  nums <- rnlist (n*6) (-0.25) (0.25)
+  let makeboids [] [] = []
       makeboids (a:b:c:d:e:f:rest) (id:ids) = 
          (Boid {identifier = id,
                 velocity = Vec2 (a*sv) (b*sv),
@@ -113,8 +112,7 @@ initialize n sp sv =
                 dbgC = vecZero,
                 dbgS = vecZero,
                 dbgA = vecZero}) : makeboids rest ids
-  in
-    makeboids nums' [1..n]
+  return $ makeboids nums [1..n]
 
 {--
 
@@ -344,8 +342,8 @@ iteration vp step w =
 main :: IO ()
 main = do
   let w = World { width = (maxx-minx), height = (maxy-miny), pixWidth = 700, pixHeight = 700 }
-      bs = initialize 1500 10.0 0.5
-      t = foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs
+  bs <- initialize 100 10.0 0.5
+  let t = foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs
   simulateIO
     (InWindow "Boids" (pixWidth w, pixHeight w) (10,10))
     (greyN 0.1)
