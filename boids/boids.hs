@@ -7,10 +7,17 @@ import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.IO.Simulate
+-- for random seed
+--import Data.Time (formatTime, getCurrentTime)
+--import System.Locale (defaultTimeLocale)
+--import Control.Applicative 
 
 data Boid = Boid { identifier :: Int,
                    position :: Vec2,
                    velocity :: Vec2, 
+                   cohesionScale :: Int,
+                   separationScale :: Int,
+                   alignmentScale :: Int,
                    dbgC :: Vec2,
                    dbgS :: Vec2,
                    dbgA :: Vec2 } deriving Show
@@ -19,6 +26,12 @@ data World = World { width :: Double,
                      height :: Double,
                      pixWidth :: Int,
                      pixHeight :: Int } deriving Show
+
+data Params = Params { aParam :: Int,
+                       sParam :: Int,
+                       sScale :: Int,
+                       cParam :: Int
+                     }
 
 {--
 
@@ -49,41 +62,55 @@ velocityScale = 10.0 * (realToFrac (max (maxx-minx) (maxy-miny)) :: Float)
 -- colors
 --
 boidColor       = makeColor 1.0 1.0 0.0 1.0
-radiusColor     = makeColor 0.5 1.0 1.0 0.2
-cohesionColor   = makeColor 1.0 0.0 0.0 1.0
-separationColor = makeColor 0.0 1.0 0.0 1.0
-alignmentColor  = makeColor 0.0 0.0 1.0 1.0
+-- radiusColor     = makeColor 0.5 1.0 1.0 0.2
+cohesionColor :: Boid -> Color
+cohesionColor b = makeColor scaled 0.0 0.0 1.0
+    where scaled = (cohesionScale b) / maxcohesion
+separationColor :: Boid -> Color
+separationColor = makeColor 0.0 scaled 0.0 1.0
+    where scaled = (separationScale b) / maxseparation
+alignmentColor :: Boid -> Color
+alignmentColor  = makeColor 0.0 0.0 scaled 1.0
+    where scaled = (alignmentScale b) / maxalignment
 
 renderboid :: World -> Boid -> Picture
 renderboid world b =
   let (Vec2 x y) = position b
-      (Vec2 vx vy) = velocity b
-      v = velocity b
-      (Vec2 dCX dCY) = dbgC b
-      (Vec2 dSX dSY) = dbgS b
-      (Vec2 dAX dAY) = dbgA b
+      --(Vec2 vx vy) = velocity b
+      --v = velocity b
+--      (Vec2 dCX dCY) = dbgC b
+--       (Vec2 dSX dSY) = dbgS b
+--       (Vec2 dAX dAY) = dbgA b
       sf = 5.0 * (scaleFactor world)
-      sf' = 1.0 * (scaleFactor world)
-      sf2 = sf * 10
+      sf' = 0.1 * (scaleFactor world)
+      sf''= 0.2 * (scaleFactor world)
+--      sf'''= 0.3 * (scaleFactor world)
+      --sf2 = sf * 10
       (xs,ys) = modelToScreen world (x,y)
-      vxs = sf * (realToFrac vx) :: Float
-      vys = sf * (realToFrac vy) :: Float
+--       vxs = sf * (realToFrac vx) :: Float
+--       vys = sf * (realToFrac vy) :: Float
   in
     Pictures $ [
       Color boidColor $ 
         Translate xs ys $
         Circle 2 ,
-      Color radiusColor $
+      Color ( cohesionColor b ) $
         Translate xs ys $
         Circle ((realToFrac epsilon) * sf'),
-      Color boidColor $          
-        Line [(xs,ys), ((xs+vxs),(ys+vys))],
-      Color cohesionColor $
-        Line [(xs,ys), ((xs+(sf2*realToFrac dCX)),(ys+(sf2*realToFrac dCY)))],
-      Color alignmentColor $
-        Line [(xs,ys), ((xs+(sf2*realToFrac dAX)),(ys+(sf2*realToFrac dAY)))],
-      Color separationColor $
-        Line [(xs,ys), ((xs+(sf'*realToFrac dSX)),(ys+(sf'*realToFrac dSY)))]
+      Color (separationColor b) $
+        Translate xs ys $
+        Circle ((realToFrac epsilon) * sf''),
+      Color ( alignmentColor b ) $
+        Translate xs ys $
+        Circle ((realToFrac epsilon) * sf''')
+--      Color boidColor $          
+--         Line [(xs,ys), ((xs+vxs),(ys+vys))],
+--       Color cohesionColor $
+--         Line [(xs,ys), ((xs+(sf2*realToFrac dCX)),(ys+(sf2*realToFrac dCY)))],
+--       Color alignmentColor $
+--         Line [(xs,ys), ((xs+(sf2*realToFrac dAX)),(ys+(sf2*realToFrac dAY)))],
+--       Color separationColor $
+--         Line [(xs,ys), ((xs+(sf'*realToFrac dSX)),(ys+(sf'*realToFrac dSY)))]
     ]
 
 renderboids :: World -> KDTreeNode Boid -> IO Picture
@@ -99,22 +126,29 @@ INITIALIZATION
 
 rnlist :: Int -> IO [Double]
 rnlist n = do
-  mapM (\_ -> randomRIO (0.0,1.0)) [1..n]
+  mapM (\_ -> randomRIO (0,1)) [1..n]
 
+-- sp is scale position
+-- sv is scale velocity
 initialize :: Int -> Double -> Double -> [Boid]
 initialize n sp sv =
-  let nums = unsafePerformIO $ rnlist (n*6) 
-      nums' = map (\i -> (0.5 - i)/2.0) nums
+  let generator = mkStdGen $ 
+        (read <$> formatTime defaultTimeLocale "%s" <$> getCurrentTime) :: IO Int
+      nums = unsafePerformIO $ rnlist (n*7) 
+      -- nums' = map (\i -> (0.5 - i)/2.0) nums
       makeboids [] [] = []
-      makeboids (a:b:c:d:e:f:rest) (id:ids) = 
+      makeboids (a:b:c:d:e:f:g:rest) (id:ids) = 
          (Boid {identifier = id,
-                velocity = Vec2 (a*sv) (b*sv),
-                position = Vec2 (d*sp) (e*sp),
+                velocity = Vec2 (sv*(0.5 - a)/2.0) (sv*(0.5 - b)/2.0),
+                position = Vec2 (sp*(0.5 - c)/2.0) (sp*(0.5 - d)/2.0),
+                cohesionScale = maxcohesion * e
+                separationScale = maxseparation * f
+                alignmentScale = maxalignment * g
                 dbgC = vecZero,
                 dbgS = vecZero,
                 dbgA = vecZero}) : makeboids rest ids
   in
-    makeboids nums' [1..n]
+    makeboids nums [1..n]
 
 {--
 
@@ -146,13 +180,13 @@ PARAMETERS
 
 --}
 
-cParam = 0.0075
+maxcohesion = 0.0175 -- originally 0.0075
 
 --sParam = (max (maxx-minx) (maxy-miny)) / 10.0
-sParam = 0.1
-sScale = 1.25
+sParam = 1 -- originally 0.1
+maxseparation = 2 -- orignally 1.25 
 
-aParam = 1.0 / 1.8
+maxalignment = 1.5 -- orignally 1.0 / 1.8
 vLimit = 0.0025 * (max (maxx-minx) (maxy-miny))
 epsilon = 0.40
 maxx = 8.0
@@ -215,9 +249,9 @@ alignment b boids a =
 -- one boid
 oneboid :: Boid -> [Boid] -> Boid
 oneboid b boids =
-  let c = cohesion b boids cParam
-      s = separation b boids sParam
-      a = alignment b boids aParam
+  let c = cohesion b boids (cohesionScale b)
+      s = separation b boids (separationScale b)
+      a = alignment b boids (alignmentScale b)
       p = position b
       v = velocity b
       id = identifier b
@@ -225,12 +259,11 @@ oneboid b boids =
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
   in
-   Boid { identifier = id,
-          position = wraparound p',
-          velocity = v'', 
-          dbgC = c,
-          dbgS = s,
-          dbgA = a}
+   b { position = wraparound p',
+       velocity = v'', 
+       dbgC = c,
+       dbgS = s,
+       dbgA = a}
 
 --
 -- Neighbor finding code
