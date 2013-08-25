@@ -76,9 +76,9 @@ renderboid :: World -> Boid -> Picture
 renderboid world b =
   let (Vec2 x y) = position b
       sf = 5.0 * (scaleFactor world)
-      sf' = 0.1 * (scaleFactor world)
-      sf''= 0.2 * (scaleFactor world)
-      sf'''=0.3 * (scaleFactor world)
+      sf' = 1.0/3.0 * (scaleFactor world)
+      sf''= 2.0/3.0 * (scaleFactor world)
+      sf'''=1 * (scaleFactor world)
       (xs,ys) = modelToScreen world (x,y)
   in
     Pictures $ [
@@ -162,8 +162,8 @@ PARAMETERS
 maxcohesion :: Double
 maxcohesion = 0.0175 -- originally 0.0075
 
-sParam = 1 -- originally 0.1
-maxseparation = 2 -- orignally 1.25
+sParam = 1.25 -- originally 1.25
+maxseparation = 0.2 -- orignally 0.1
 
 maxalignment = 1.5 -- orignally 1.0 / 1.8
 vLimit = 0.0025 * (max (maxx-minx) (maxy-miny))

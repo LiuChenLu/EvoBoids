@@ -1,5 +1,5 @@
 all:
-	cabal build
+	cabal install
 
 run:
 	dist/build/hel-boids/hel-boids
