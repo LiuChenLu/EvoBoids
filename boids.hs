@@ -6,7 +6,7 @@ import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
-import Graphics.Gloss.Interface.IO.Simulate
+import Graphics.Gloss.Interface.Pure.Game
 -- for random seed
 --import Data.Time (formatTime, getCurrentTime)
 --import System.Locale (defaultTimeLocale)
@@ -46,6 +46,12 @@ modelToScreen world (x,y) =
       yscale = (fromIntegral (pixHeight world)) / (height world)
   in
     (realToFrac $ x * xscale, realToFrac $ y * yscale)
+
+screenToModel :: World -> (Float, Float) -> Vec2
+screenToModel world (x,y) = 
+    Vec2 (realToFrac x / xscale) (realToFrac y / yscale)
+   where xscale = (fromIntegral (pixWidth world)) / (width world)
+         yscale = (fromIntegral (pixHeight world)) / (height world)
 
 scaleFactor :: World -> Float
 scaleFactor world =
@@ -259,6 +265,28 @@ repel x maxx minx | (x - minx) < cap =   c / (x - minx)**2
     where c = 0.001
           cap = 2
 
+--              Position
+notice_point :: Vec2    -> Boid -> Boid
+notice_point pos b = b
+    {velocity = (flip limiter) vLimit $
+        velocity b `vecAdd` (vecScale (pos `vecSub` (position b)) 0.001)}
+
+
+-- =====
+-- Input
+-- =====
+-- Not sure if this is the best place for this...
+-- Maybe make a new section for input
+
+isClick :: Event -> Bool
+isClick (EventKey (MouseButton mb) _ _ _) = True
+isClick _ = False
+
+--handleInput :: Event -> a -> a
+handleInput world (EventKey (MouseButton mb) _ _ (x,y)) kd = fmap f kd
+    where m_pos = screenToModel world (x,y)
+          f     = notice_point m_pos
+handleInput world _ kd = kd
 --
 -- Neighbor finding code
 --
@@ -341,7 +369,7 @@ wraparound (Vec2 x y) =
      y' = if (y>maxy) then y-h else (if y<miny then y+h else y)
  in Vec2 x' y'
 
-iterationkd vp step w =
+iterationkd _step w =
   let boids = mapKDTree w (\i -> oneboid i (findNeighbors w i))
   in foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
 
@@ -351,10 +379,11 @@ main = do
   let w = World { width = (maxx-minx), height = (maxy-miny), pixWidth = 700, pixHeight = 700 }
   bs <- initialize 100 10.0 0.5
   let t = foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs
-  simulate
+  play
     (InWindow "Boids" (pixWidth w, pixHeight w) (10,10))
     (greyN 0.1)
     30
     t
     (renderboids w)
+    (handleInput w)
     iterationkd
