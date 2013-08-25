@@ -7,10 +7,17 @@ import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.IO.Simulate
+-- for random seed
+--import Data.Time (formatTime, getCurrentTime)
+--import System.Locale (defaultTimeLocale)
+--import Control.Applicative
 
 data Boid = Boid { identifier :: Int,
                    position :: Vec2,
-                   velocity :: Vec2, 
+                   velocity :: Vec2,
+                   cohesionScale :: Double,
+                   separationScale :: Double,
+                   alignmentScale :: Double,
                    dbgC :: Vec2,
                    dbgS :: Vec2,
                    dbgA :: Vec2 } deriving (Eq, Show)
@@ -19,6 +26,11 @@ data World = World { width :: Double,
                      height :: Double,
                      pixWidth :: Int,
                      pixHeight :: Int } deriving (Eq, Show)
+
+data Params = Params { aParam :: Double,
+                       sScale :: Double,
+                       cParam :: Double
+                     }
 
 {--
 
@@ -49,41 +61,39 @@ velocityScale = 10.0 * (realToFrac (max (maxx-minx) (maxy-miny)) :: Float)
 -- colors
 --
 boidColor       = makeColor 1.0 1.0 0.0 1.0
-radiusColor     = makeColor 0.5 1.0 1.0 0.2
-cohesionColor   = makeColor 1.0 0.0 0.0 1.0
-separationColor = makeColor 0.0 1.0 0.0 1.0
-alignmentColor  = makeColor 0.0 0.0 1.0 1.0
+-- radiusColor     = makeColor 0.5 1.0 1.0 0.2
+cohesionColor :: Boid -> Color
+cohesionColor b = makeColor scaled 0.0 0.0 1.0
+    where scaled = realToFrac $ (cohesionScale b) / maxcohesion
+separationColor :: Boid -> Color
+separationColor b = makeColor 0.0 scaled 0.0 1.0
+    where scaled = realToFrac $ (separationScale b) / maxseparation
+alignmentColor :: Boid -> Color
+alignmentColor b = makeColor 0.0 0.0 scaled 1.0
+    where scaled = realToFrac $ (alignmentScale b) / maxalignment
 
 renderboid :: World -> Boid -> Picture
 renderboid world b =
   let (Vec2 x y) = position b
-      (Vec2 vx vy) = velocity b
-      v = velocity b
-      (Vec2 dCX dCY) = dbgC b
-      (Vec2 dSX dSY) = dbgS b
-      (Vec2 dAX dAY) = dbgA b
       sf = 5.0 * (scaleFactor world)
-      sf' = 1.0 * (scaleFactor world)
-      sf2 = sf * 10
+      sf' = 0.1 * (scaleFactor world)
+      sf''= 0.2 * (scaleFactor world)
+      sf'''=0.3 * (scaleFactor world)
       (xs,ys) = modelToScreen world (x,y)
-      vxs = sf * (realToFrac vx) :: Float
-      vys = sf * (realToFrac vy) :: Float
   in
     Pictures $ [
-      Color boidColor $ 
+      Color boidColor $
         Translate xs ys $
         Circle 2 ,
-      Color radiusColor $
+      Color ( cohesionColor b ) $
         Translate xs ys $
         Circle ((realToFrac epsilon) * sf'),
-      Color boidColor $          
-        Line [(xs,ys), ((xs+vxs),(ys+vys))],
-      Color cohesionColor $
-        Line [(xs,ys), ((xs+(sf2*realToFrac dCX)),(ys+(sf2*realToFrac dCY)))],
-      Color alignmentColor $
-        Line [(xs,ys), ((xs+(sf2*realToFrac dAX)),(ys+(sf2*realToFrac dAY)))],
-      Color separationColor $
-        Line [(xs,ys), ((xs+(sf'*realToFrac dSX)),(ys+(sf'*realToFrac dSY)))]
+      Color (separationColor b) $
+        Translate xs ys $
+        Circle ((realToFrac epsilon) * sf''),
+      Color ( alignmentColor b ) $
+        Translate xs ys $
+        Circle ((realToFrac epsilon) * sf''')
     ]
 
 renderboids :: World -> KDTreeNode Boid -> Picture
@@ -97,18 +107,23 @@ INITIALIZATION
 
 --}
 
-rnlist :: Int -> Double -> Double-> IO [Double]
-rnlist n low high = do
-  mapM (\_ -> randomRIO (low, high)) [1..n]
+rnlist :: Int -> IO [Double]
+rnlist n = do
+  mapM (\_ -> randomRIO (0,1)) [1..n]
 
+-- sp is scale position
+-- sv is scale velocity
 initialize :: Int -> Double -> Double -> IO [Boid]
 initialize n sp sv = do
-  nums <- rnlist (n*6) (-0.25) (0.25)
+  nums <- rnlist (n*7)
   let makeboids [] [] = []
-      makeboids (a:b:c:d:e:f:rest) (id:ids) = 
+      makeboids (a:b:c:d:e:f:g:rest) (id:ids) =
          (Boid {identifier = id,
-                velocity = Vec2 (a*sv) (b*sv),
-                position = Vec2 (d*sp) (e*sp),
+                velocity = Vec2 (sv*(0.5 - a)/2.0) (sv*(0.5 - b)/2.0),
+                position = Vec2 (sp*(0.5 - c)/2.0) (sp*(0.5 - d)/2.0),
+                cohesionScale = maxcohesion * e,
+                separationScale = maxseparation * f,
+                alignmentScale = maxalignment * g,
                 dbgC = vecZero,
                 dbgS = vecZero,
                 dbgA = vecZero}) : makeboids rest ids
@@ -126,8 +141,9 @@ VECTOR HELPERS
 -- be used to enforce an upper bound
 limiter :: Vec2 -> Double -> Vec2
 limiter x lim = let d = vecNorm x
-                in if (d < lim) then x
-	               else vecScale (vecNormalize x) lim
+                in if (d < lim)
+                    then x
+                    else vecScale (vecNormalize x) lim
 
 --
 -- vector with all components length epsilon
@@ -143,14 +159,13 @@ PARAMETERS
 ==========================================================================
 
 --}
+maxcohesion :: Double
+maxcohesion = 0.0175 -- originally 0.0075
 
-cParam = 0.0075
+sParam = 1 -- originally 0.1
+maxseparation = 2 -- orignally 1.25
 
---sParam = (max (maxx-minx) (maxy-miny)) / 10.0
-sParam = 0.1
-sScale = 1.25
-
-aParam = 1.0 / 1.8
+maxalignment = 1.5 -- orignally 1.0 / 1.8
 vLimit = 0.0025 * (max (maxx-minx) (maxy-miny))
 epsilon = 0.40
 maxx = 8.0
@@ -189,8 +204,8 @@ cohesion b boids a = vecScale diff a
   where c = findCentroid boids
         p = position b
         diff = vecSub c p
-        
--- separation.  
+
+-- separation.
 separation :: Boid -> [Boid] -> Double -> Vec2
 separation b []    a = vecZero
 separation b boids a =
@@ -198,7 +213,7 @@ separation b boids a =
       closeby = filter (\i -> (vecNorm i) < a) diff_positions
       sep = foldl vecSub vecZero closeby
   in
-    vecScale sep sScale
+    vecScale sep sParam
 
 -- alignment
 alignment :: Boid -> [Boid] -> Double -> Vec2
@@ -213,9 +228,9 @@ alignment b boids a =
 -- one boid
 oneboid :: Boid -> [Boid] -> Boid
 oneboid b boids =
-  let c = cohesion b boids cParam
-      s = separation b boids sParam
-      a = alignment b boids aParam
+  let c = cohesion b boids (cohesionScale b)
+      s = separation b boids (separationScale b)
+      a = alignment b boids (alignmentScale b)
       p = position b
       v = velocity b
       id = identifier b
@@ -223,11 +238,12 @@ oneboid b boids =
                   (edge_repel p)
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
-  in  b { position = wraparound p',
-          velocity = v'', 
-          dbgC = c,
-          dbgS = s,
-          dbgA = a}
+  in
+   b { position = wraparound p',
+       velocity = v'',
+       dbgC = c,
+       dbgS = s,
+       dbgA = a}
 
 
 -- Fear edges
@@ -264,15 +280,15 @@ repel x maxx minx | (x - minx) < cap =   c / (x - minx)**2
 findNeighbors :: KDTreeNode Boid -> Boid -> [Boid]
 findNeighbors w b =
   let p = position b
-      
+
       -- bounds
       vlo = vecSub p epsvec
       vhi = vecAdd p epsvec
-      
+
       -- split the boxes
       splith = splitBoxHoriz (vlo, vhi, 0.0, 0.0)
       splitv = concatMap splitBoxVert splith
-      
+
       -- adjuster for wraparound
       adj1 ax ay (pos, theboid) = (vecAdd pos av,
                                    theboid { position = vecAdd p av })
@@ -281,10 +297,10 @@ findNeighbors w b =
 
       adjuster lo hi ax ay = let neighbors = kdtRangeSearch w lo hi
                              in map (adj1 ax ay) neighbors
-      
+
       -- do the sequence of range searches
       ns = concatMap (\(lo,hi,ax,ay) -> adjuster lo hi ax ay) splitv
-      
+
       -- compute the distances from boid b to members
       dists = map (\(np,n) -> (vecNorm (vecSub p np), n)) ns
   in
@@ -293,12 +309,12 @@ findNeighbors w b =
 
 splitBoxHoriz :: (Vec2,Vec2,Double,Double) -> [(Vec2,Vec2,Double,Double)]
 splitBoxHoriz (lo@(Vec2 lx ly), hi@(Vec2 hx hy), ax, ay) =
-  if (hx-lx > w) 
+  if (hx-lx > w)
   then [(Vec2 minx ly, Vec2 maxx hy, ax, ay)]
-  else if (lx < minx) 
+  else if (lx < minx)
        then [(Vec2 minx ly, Vec2 hx hy, ax, ay),
              (Vec2 (maxx-(minx-lx)) ly, Vec2 maxx hy, (ax-w), ay)]
-       else if (hx > maxx) 
+       else if (hx > maxx)
             then [(Vec2 lx ly, Vec2 maxx hy, ax, ay),
                   (Vec2 minx ly, Vec2 (minx + (hx-maxx)) hy, ax+w, ay)]
             else [(lo,hi,ax,ay)]
@@ -306,12 +322,12 @@ splitBoxHoriz (lo@(Vec2 lx ly), hi@(Vec2 hx hy), ax, ay) =
 
 splitBoxVert :: (Vec2,Vec2,Double,Double) -> [(Vec2,Vec2,Double,Double)]
 splitBoxVert (lo@(Vec2 lx ly), hi@(Vec2 hx hy), ax, ay) =
-  if (hy-ly > h) 
+  if (hy-ly > h)
   then [(Vec2 lx miny, Vec2 hx maxy, ax, ay)]
-  else if (ly < miny) 
+  else if (ly < miny)
        then [(Vec2 lx miny, Vec2 hx hy, ax, ay),
              (Vec2 lx (maxy-(miny-ly)), Vec2 hx maxy, ax, ay-h)]
-       else if (hy > maxy) 
+       else if (hy > maxy)
             then [(Vec2 lx ly, Vec2 hx maxy, ax, ay),
                   (Vec2 lx miny, Vec2 hx (miny + (hy-maxy)), ax, ay+h)]
             else [(lo,hi,ax,ay)]
@@ -328,13 +344,7 @@ wraparound (Vec2 x y) =
 iterationkd vp step w =
   let boids = mapKDTree w (\i -> oneboid i (findNeighbors w i))
   in foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
-    
-iteration :: ViewPort -> Float -> KDTreeNode Boid -> KDTreeNode Boid
-iteration vp step w =
-  let all = kdtreeToList w
-      boids = mapKDTree w (\i -> oneboid i all)
-  in
-    foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
+
 
 main :: IO ()
 main = do
@@ -344,7 +354,7 @@ main = do
   simulate
     (InWindow "Boids" (pixWidth w, pixHeight w) (10,10))
     (greyN 0.1)
-    30 
+    30
     t
     (renderboids w)
     iterationkd
