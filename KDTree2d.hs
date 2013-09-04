@@ -4,6 +4,7 @@
 --
 -- mjsottile@computer.org
 --
+
 module KDTree2d (
   KDTreeNode(..),
   newKDTree,
@@ -33,11 +34,11 @@ kdtreeToListOld (Node l _ x r) = [x]++(kdtreeToList l)++(kdtreeToList r)
 kdtreeToList :: (KDTreeNode a) -> [a]
 kdtreeToList k = mapKDTree k id
 
-mapKDTreeOld :: KDTreeNode a -> (a -> b) -> [b]
-mapKDTreeOld Empty _ = []
+mapKDTreeOld :: KDTreeNode a -> (a -> b) -> [b] 
+mapKDTreeOld Empty _ = [] 
 mapKDTreeOld (Node l p n r) f = (f n):((mapKDTreeOld l f)++(mapKDTreeOld r f))
 
-mapKDTree :: KDTreeNode a -> (a -> b) -> [b]
+mapKDTree :: KDTreeNode a ->  (a -> b) -> [b]
 mapKDTree Empty _ = []
 mapKDTree (Node Empty p n r) f = (f n) : (mapKDTree r f)
 mapKDTree (Node (Node l1 p1 n1 r1) p n r) f = mapKDTree (Node l1 p1 n1 (Node r1 p n r)) f

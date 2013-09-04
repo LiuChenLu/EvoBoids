@@ -17,4 +17,4 @@ cabal-version:       >=1.8
 executable hel-boids
   main-is: boids.hs
   other-modules:       KDTree2d, Vec2
-  build-depends:       base >=4.0, gloss >=1.7, random>=1.0.1.1
+  build-depends:       base >=4.0, gloss >=1.7, random>=1.0.1.1, mtl>=2.0.0

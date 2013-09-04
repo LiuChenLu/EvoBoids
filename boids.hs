@@ -7,14 +7,20 @@ import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.IO.Simulate
+import Data.Monoid
+import Control.Monad.Writer.Lazy
+import Data.Maybe  (fromJust, isJust)
 -- for random seed
 --import Data.Time (formatTime, getCurrentTime)
 --import System.Locale (defaultTimeLocale)
 --import Control.Applicative
 
+data Food = Food { position :: Vec2}
+
 data Boid = Boid { identifier :: Int,
                    position :: Vec2,
                    velocity :: Vec2,
+                   hunger :: Double, -- in [0,1] if hunger reaches 1, then the Boid starves
                    cohesionScale :: Double,
                    separationScale :: Double,
                    alignmentScale :: Double,
@@ -27,11 +33,12 @@ data World = World { width :: Double,
                      pixWidth :: Int,
                      pixHeight :: Int } deriving (Eq, Show)
 
+{--
 data Params = Params { aParam :: Double,
                        sScale :: Double,
                        cParam :: Double
                      }
-
+--}
 {--
 
 ==========================================================================
@@ -60,7 +67,8 @@ velocityScale = 10.0 * (realToFrac (max (maxx-minx) (maxy-miny)) :: Float)
 --
 -- colors
 --
-boidColor       = makeColor 1.0 1.0 0.0 1.0
+boidColor :: Boid -> Color
+boidColor b     = makeColor 1.0 1.0 0.0 1.0*(1 - hunger b)
 -- radiusColor     = makeColor 0.5 1.0 1.0 0.2
 cohesionColor :: Boid -> Color
 cohesionColor b = makeColor scaled 0.0 0.0 1.0
@@ -82,9 +90,9 @@ renderboid world b =
       (xs,ys) = modelToScreen world (x,y)
   in
     Pictures $ [
-      Color boidColor $
+      Color (boidColor b) $
         Translate xs ys $
-        Circle 2 ,
+        Circle 2 , -- a dying boid will be faded and a full boid will be bright yellow
       Color ( cohesionColor b ) $
         Translate xs ys $
         Circle ((realToFrac epsilon) * sf'),
@@ -96,8 +104,23 @@ renderboid world b =
         Circle ((realToFrac epsilon) * sf''')
     ]
 
-renderboids :: World -> KDTreeNode Boid -> Picture
-renderboids world bs =  (Pictures $ mapKDTree bs (renderboid world))
+-- TODO check type signature!
+renderfoods :: World -> [Food] -> Picture
+renderfoods world [] = []
+renderfoods world foods = 
+  let foi : rest = foods -- food of interest : rest of food
+      (Vec2 x y) = position foi
+      (xs,ys) = modelToScreen world (x,y)
+  in Pictures $ [
+       -- food will appear as small white squares
+       -- TODO check that squares are called squares
+       Color $ makeColor 1 1 1 1 $ Translate xs yx $ Square 2
+     ] ++ renderfoods world rest
+
+-- TODO check the type signature here :/
+renderboids :: World -> (KDTreeNode Boid , [Food]) -> Picture
+renderboids world (bs,fs) =
+    (Pictures $ (mapKDTree bs (renderboid world))++(renderfoods world fs))
 
 {--
 
@@ -124,11 +147,19 @@ initialize n sp sv = do
                 cohesionScale = maxcohesion * e,
                 separationScale = maxseparation * f,
                 alignmentScale = maxalignment * g,
+                hunger = 0,
                 dbgC = vecZero,
                 dbgS = vecZero,
                 dbgA = vecZero}) : makeboids rest ids
   return $ makeboids nums [1..n]
 
+initializeFoods :: Int -> Double -> Double -> IO [Food]
+initializeFoods numBoids scalePos = do
+    nums <- rnlist 2*(floor (n/2)) -- for 2 boids, there will be one food. Let them STARVE! muhaha
+    let makefoods [] = []
+        makefoods (x:y:rest) = Food {position = Vec2(sp*(0.5-a)/2.0 sp(0.5-b)/2.0)} :
+                               makefoods rest
+    return (makefoods nums)
 {--
 
 ==========================================================================
@@ -159,11 +190,17 @@ PARAMETERS
 ==========================================================================
 
 --}
+--
+world = World { width = (maxx-minx), height = (maxy-miny), pixWidth = 700, pixHeight = 700 }
+
 maxcohesion :: Double
 maxcohesion = 0.0175 -- originally 0.0075
 
 sParam = 1.25 -- originally 1.25
 maxseparation = 0.2 -- orignally 0.1
+
+sight = 3*(scaleFactor world) :: Double
+hungerScale = 2.0 :: Double
 
 maxalignment = 1.5 -- orignally 1.0 / 1.8
 vLimit = 0.0025 * (max (maxx-minx) (maxy-miny))
@@ -182,11 +219,21 @@ BOIDS LOGIC
 
 --}
 
+-- food seeking behaviour
+euclidean :: Vec2 -> Double
+euclidean (Vec2 x y) = sqrt ( x^2 + y^2 )
+
+seekFood :: Boid -> [Food] -> Vec2
+seekFood b foods = 
+    let p = position b
+        foodlist = map (vecSub p) foods
+        closestFood = vecSub VecZero $ minimumBy (compare `on` euclidean) foodlist
+    in vecScale (vecScale closestFood (hunger b)) hungerScale
+
 -- three rules : cohesion (seek centroid), separation (avoid neighbors),
 -- and alignment (fly same way as neighbors)
-
---
 -- centroid is average position of boids, or the vector sum of all
+--
 -- boid positions scaled by 1/(number of boids)
 --
 findCentroid :: [Boid] -> Vec2
@@ -225,26 +272,40 @@ alignment b boids a =
   in
    vecScale (vecSub v' (velocity b)) a
 
+distance :: Vec2 -> Vec2 -> Double
+distance v1 v2 = sqrt((x1-x2)^2+(y1-y2)^2)
+    where (x1,y1)=v1
+          (x2,y2)=v2
+
 -- one boid
-oneboid :: Boid -> [Boid] -> Boid
-oneboid b boids =
-  let c = cohesion b boids (cohesionScale b)
+oneboid :: Writer [Food] Boid -> [Boid] -> Writer [Food] Boid
+oneboid wb boids =
+  let (b,foods) = runWriter wb
+      c = cohesion b boids (cohesionScale b)
       s = separation b boids (separationScale b)
       a = alignment b boids (alignmentScale b)
+      f = seekFood b foods
       p = position b
       v = velocity b
-      id = identifier b
-      v' = vecAdd (vecAdd v (vecScale (vecAdd c (vecAdd s a)) 0.1))
-                  (edge_repel p)
+      v' = vecAdd (vecAdd (vecAdd v (vecScale (vecAdd c (vecAdd s a)) 0.1))
+                          (edge_repel p) 
+                   f)
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
+      maybefood = find ( \foodParticle -> (distance p (position foodParticle)) <= epsilon )
+                  foods
+      (remainingFoods,newhunger)=
+        if (isJust maybefood) 
+        then (delete (fromJust maybefood) foods, 0)
+        else (foods , (hunger b) - 0.01)
   in
-   b { position = wraparound p',
-       velocity = v'',
-       dbgC = c,
-       dbgS = s,
-       dbgA = a}
-
+      Writer ( b { position = wraparound p',
+                   velocity = v'',
+                   hunger = newhunger,
+                   dbgC = c,
+                   dbgS = s,
+                   dbgA = a},
+               remainingFoods)
 
 -- Fear edges
 -- Pos -> Delta Velocity
@@ -341,20 +402,52 @@ wraparound (Vec2 x y) =
      y' = if (y>maxy) then y-h else (if y<miny then y+h else y)
  in Vec2 x' y'
 
-iterationkd vp step w =
-  let boids = mapKDTree w (\i -> oneboid i (findNeighbors w i))
-  in foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids
+-- TODO make this prettier
+-- number of boids -> list of foods
+growFood :: Int -> Double -> IO [Food]
+growFood n sp = do
+    nums <-rnlist 2
+    let grow [] = []
+        grow [a:b:rest] = 
+            Food {position=Vec2(sp*(0.5-a)/2.0 sp*(0.5-b)/2.0)} : (grow rest)
+    return $ grow nums
 
+-- writer traverse tree. modifed from mapKDTree
+wtraverseTree :: KDTreeNode a -> [Food] ->  (Writer [Food] a -> Writer [Food] b) -> ([Food],[b])
+wtraverseTree Empty _ = []
+wtraverseTree (Node Empty position boid right) foods f = 
+  (boidList,foodList)
+  where
+    Writer (remainingFoods,updatedboid) = f ( Writer(boid,foods) )
+    (foodlist,boidlist) = wtraverseTree right remainingFoods f
+    boidList = if (hunger updatedboid) > 0 then updatedboid:boidlist else boidlist
+wtraverseTree (Node (Node leftl positionl boidl rightl) position boid right) foods f =
+    wtraverseTree (Node leftl positionl nodel (Node rightl position boid right)) foods f
+
+
+
+iterationkd :: Int -> Double -> ViewPort -> Float -> (KDTreeNode Boid,[Food]) -> (KDTreeNode Boid, [Food])
+iterationkd n sp vp _step (w,foods) = 
+  let 
+    (boids,rfoods)=wtraverseTree w (\Writer(i,j) -> oneboid Writer(i,j) (findNeighbors w i))
+    newfoods = (growFood n sp) ++ rfoods
+  in (foldl (\t b -> kdtAddPoint t (position b) b) newKDTree boids, newfoods)
 
 main :: IO ()
 main = do
-  let w = World { width = (maxx-minx), height = (maxy-miny), pixWidth = 700, pixHeight = 700 }
-  bs <- initialize 100 10.0 0.5
-  let t = foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs
+  let 
+    sp = 10.0
+    sv = 0.5
+    n = 100
+    bs <- initialize n sp sv -- boids starting
+    fs <- initializeFoods n sp -- foods starting
+    -- tf is (tree,food)
+    tf = (foldl (\t b -> kdtAddPoint t (position b) b) newKDTree bs, -- newKDTree
+          fs)
   simulate
-    (InWindow "Boids" (pixWidth w, pixHeight w) (10,10))
+    (InWindow "Boids" (pixWidth world, pixHeight world) (10,10))
     (greyN 0.1)
     30
-    t
-    (renderboids w)
-    iterationkd
+    tf
+    (renderboids world)
+    (iterationkd n sp)-- TODO what is happening here?? what?? is there side effects????
