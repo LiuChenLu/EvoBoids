@@ -115,13 +115,13 @@ renderfoods world foods =
       (xs,ys) = modelToScreen world (x,y)
   in -- food will appear as small white squares
       ( Color   (makeColor 1 1 1 1)
-             $ Translate xs ys 
+            -- $ Translate xs ys 
              $ Polygon [(xs-1,ys-1),(xs+1 ,ys-1),(xs+1 ,ys+1),(xs-1 ,ys+1),(xs-1,ys-1)]
       ) : renderfoods world rest
 
 -- TODO check the type signature here :/
-renderboids :: World -> (KDTreeNode Boid , [Food]) -> Picture
-renderboids world (bs,fs) =
+renderboids :: (RandomGen g) => World -> (KDTreeNode Boid , [Food], g) -> Picture
+renderboids world (bs,fs,_gen) =
     (Pictures $ (mapKDTree bs (renderboid world))++(renderfoods world fs))
 
 {--
@@ -223,18 +223,18 @@ BOIDS LOGIC
 --}
 
 -- food seeking behaviour
-euclidean :: Vec2 -> Double
-euclidean (Vec2 x y) = sqrt ( x^2 + y^2 )
+euclidean :: Vec2 -> Vec2 -> Double
+euclidean (Vec2 x1 y1) (Vec2 x2 y2) = sqrt ( (x1-x2)^2 + (y1-y2)^2 )
 
 seekFood :: Boid -> [Food] -> Vec2
 seekFood b foods = 
     let p = bposition b
-        foodlist = map ((vecSub p) . fposition)  foods
-        closestFood = 
-         case foodlist of 
-          [] -> vecZero
-          _  -> vecSub vecZero $ minimumBy (compare `on` euclidean) foodlist
-    in vecScale (vecScale closestFood (hunger b)) hungerScale
+        foodpos = map (fposition) foods
+        goToClosestFood = 
+         case foods of 
+         [] -> vecZero
+         _  -> vecSub (minimumBy (compare `on` (euclidean p)) foodpos) p
+    in vecScale (vecScale goToClosestFood (hunger b)) hungerScale
 
 -- three rules : cohesion (seek centroid), separation (avoid neighbors),
 -- and alignment (fly same way as neighbors)
@@ -406,15 +406,22 @@ wraparound (Vec2 x y) =
      y' = if (y>maxy) then y-h else (if y<miny then y+h else y)
  in Vec2 x' y'
 
--- TODO make this prettier
+-- there is a 1 in 100 chance that a new pice of food will appear on this iteration
 -- number of boids -> list of foods
-growFood :: Int -> Double -> IO [Food]
-growFood n sp = do
-    nums <-rnlist 2
-    let grow [] = []
-        grow (a:b:rest) = 
-            Food {fposition=Vec2(sp*(0.5-a)/2.0) (sp*(0.5-b)/2.0)} : (grow rest)
-    return $ grow nums
+growFood :: RandomGen g => Int -> Double -> g -> ([Food],g)
+growFood n sp randGen = (foods,finalRanGen)
+    where
+    (i,randGen')  = randomR (0,100) randGen
+    (foods,finalRanGen)= if i==(1::Int) 
+                         then ([],randGen') 
+                         else
+                          let 
+                           (a,randGen'') = randomR (0,1) randGen'
+                           (b,randGen''')= randomR (0,1) randGen''
+                          in
+                           ([Food {fposition=Vec2(sp*(0.5-a)/2.0) (sp*(0.5-b)/2.0)}],
+                            randGen''')
+       
 
 -- writer traverse tree. modifed from mapKDTree
 -- wtraverseTree :: KDTreeNode a -> [Food] ->  (Writer [Food] a -> Writer [Food] b) -> ([Food],[b])
@@ -438,24 +445,25 @@ serialize (a:as) foods = let (b, newFoods) = a foods
     (b:bs, finalFood)
 
 -- iterationkd :: Int -> Double -> ViewPort -> Float -> (KDTreeNode Boid,[Food]) -> (KDTreeNode Boid, [Food])
-iterationkd n sp step (w,foods) = 
+iterationkd n sp step (w,foods,randGen) = 
   let 
     actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreeToList w
     (boids,rfoods) = serialize actions foods
-    newfoods = (unsafePerformIO (growFood n sp)) ++ rfoods
-  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, newfoods)
+    (addedFood,randGen') = growFood n sp randGen 
+  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen')
 
 main :: IO ()
 main = 
   let sp = 10.0
       sv = 0.5
-      n  = 100 in do
-  bs <- initialize n sp sv -- boids starting
-  fs <- initializeFoods n sp -- foods starting
+      n  = 5 in do
+  randGen3 <- getStdGen
+  (bs) <- initialize n sp sv -- boids starting
+  (fs) <- initializeFoods n sp -- foods starting
     -- tf is (tree,food)
   let
     tf = (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree bs, -- newKDTree
-          fs)
+          fs, randGen3)
   play
     (InWindow "Boids" (pixWidth world, pixHeight world) (10,10))
     (greyN 0.1)
