@@ -291,12 +291,13 @@ sizeOfVec v1 = sqrt((x1)^2+(y1)^2)
 -- one boid
 -- TODO make the rate of starvation dependant on scaleFactor to avoid boids in larger
 -- worlds from starving too quickly
-oneboid :: Boid -> [Boid] -> [Food] -> (Boid,[Food])
-oneboid b boids foods=
-  let c = cohesion b boids (cohesionScale b) `vecScale` 0.1
-      s = separation b boids (separationScale b) `vecScale` 0.1
-      a = alignment b boids (alignmentScale b) `vecScale` 0.1
-      f = seekFood b foods `vecScale` 0.1
+oneboid :: Boid -> [Boid] -> Bool -> [Food] -> (Boid,[Food])
+oneboid b boids noticeFood foods=
+  let c = cohesion b boids (cohesionScale b) `vecScale` 0.05
+      s = separation b boids (separationScale b) `vecScale` 0.05
+      a = alignment b boids (alignmentScale b) `vecScale` 0.05
+      -- boids have 1 in 3 chance of noticing the nearest food.
+      f = if noticeFood then seekFood b foods `vecScale` 0.05 else vecZero
       p = bposition b
       v = velocity b
       v' = foldl' vecAdd (Vec2 0 0) [ v, c, s, a, (edge_repel p), f ]
@@ -473,6 +474,19 @@ serialize (a:as) foods = let (b, newFoods) = a foods
                              (bs, finalFood) = serialize as newFoods in
     (b:bs, finalFood)
 
+-- TODO type signature
+rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Bool],g) 
+rnlistWithRandGen 0 _max randGen = ([],randGen)
+rnlistWithRandGen n max randGen = (curBool:rest,randGenFinal)
+    where
+        (curInt,nextRanGen)=randomR (0,max) randGen
+        curBool=(curInt==0)
+        (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
+
+zipApply :: [(a->b)] -> [a] -> [b]
+zipApply [] [] = []
+zipApply (f:fs) (b:bs) = (f b):(zipApply fs bs)
+
 iterationkd :: RandomGen t1 =>
         Double
      -> t
@@ -483,19 +497,21 @@ iterationkd sp step (w,foods,randGen) =
     -- the list of boids, converted from kdtree
     kdtreetolist = kdtreeToList w
     n = length kdtreetolist
+    (listOfBool,randGen')=rnlistWithRandGen n 2 randGen
     actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreetolist
-    (zombieBoids,rfoods) = serialize actions foods
+    actions'= zipApply actions listOfBool
+    (zombieBoids,rfoods) = serialize actions' foods
     boids = filter (\b->(hunger b) < 1) zombieBoids
-    (addedFood,randGen') = if (length foods) > 2*n 
-                           then ([],randGen)
-                           else growFood n sp foods randGen 
-  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen')
+    (addedFood,randGen'') = if (length foods) > 2*n 
+                           then ([],randGen')
+                           else growFood n sp foods randGen' 
+  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen'')
 
 main :: IO ()
 main = 
   let sp = 10.0
       sv = 0.5
-      n  = 5  in do
+      n  = 50  in do
   randGen3 <- getStdGen
   (bs) <- initialize n sp sv -- boids starting
   (fs) <- initializeFoods n sp -- foods starting
