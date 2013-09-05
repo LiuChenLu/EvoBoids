@@ -112,7 +112,6 @@ renderboid world b =
         Circle ((realToFrac epsilon) * sf''')
     ]
 
--- TODO check type signature!
 renderfoods :: World -> [Food] -> [Picture]
 renderfoods world [] = []
 renderfoods world foods = 
@@ -125,7 +124,6 @@ renderfoods world foods =
              $ Polygon [(xs-1,ys-1),(xs+1 ,ys-1),(xs+1 ,ys+1),(xs-1 ,ys+1),(xs-1,ys-1)]
       ) : renderfoods world rest
 
--- TODO check the type signature here :/
 renderboids :: (RandomGen g) => World -> (KDTreeNode Boid , [Food], g) -> Picture
 renderboids world (bs,fs,_gen) =
     (Pictures $ (mapKDTree bs (renderboid world))++(renderfoods world fs))
@@ -512,4 +510,4 @@ main =
     tf
     (renderboids world)
     (handleInput world)
-    (iterationkd sp)-- TODO what is happening here?? what?? is there side effects????
+    (iterationkd sp) 
