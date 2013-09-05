@@ -1,21 +1,14 @@
 import KDTree2d
 import Vec2
 import System.Random
---import System.IO.Unsafe
 import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.Pure.Game
--- import Data.Monoid.Writer
--- import Control.Monad.Writer.Lazy
 import Data.Maybe  (fromJust, isJust)
 import Data.List (minimumBy,find,delete,foldl')
 import Data.Function (on)
--- for random seed
---import Data.Time (formatTime, getCurrentTime)
---import System.Locale (defaultTimeLocale)
---import Control.Applicative
 
 data Food = Food { fposition :: Vec2} deriving (Eq)
 
@@ -35,12 +28,6 @@ data World = World { width :: Double,
                      pixWidth :: Int,
                      pixHeight :: Int } deriving (Eq, Show)
 
-{--
-data Params = Params { aParam :: Double,
-                       sScale :: Double,
-                       cParam :: Double
-                     }
---}
 {--
 
 ==========================================================================
@@ -204,7 +191,9 @@ maxcohesion :: Double
 maxcohesion = 0.0175 -- originally 0.0075
 
 sParam = 1.25 -- originally 1.25
-maxseparation = 0.2 -- orignally 0.1
+personalSpace = 0.5 -- how close do adjacent boids have to be before boid of interest want
+                  -- to fly away
+maxseparation = 0.5 -- orignally 0.1
 
 sight = 3*(scaleFactor world) -- :: Double
 hungerScale = 2.0  -- :: Double
@@ -231,7 +220,6 @@ euclidean:: Vec2 -> Vec2 -> Double
 euclidean (Vec2 x1 y1) (Vec2 x2 y2) = sqrt ( (x1-x2)^2 + (y1-y2)^2 )
 
 -- hungrier boids want food more
--- TODO make noticing foods better if there're more boids
 seekFood :: Boid -> [Food] -> Vec2
 seekFood b foods = 
     let p = bposition b
@@ -269,8 +257,8 @@ separation :: Boid -> [Boid] -> Double -> Vec2
 separation b []    a = vecZero
 separation b boids a =
   let diff_positions = map (\i -> vecSub (bposition i) (bposition b)) boids
-      closeby = filter (\i -> (vecNorm i) < a) diff_positions
-      sep = foldl vecSub vecZero closeby
+      closeby = filter (\i -> (vecNorm i) < personalSpace) diff_positions
+      sep = vecScale (foldl vecSub vecZero closeby) a
   in
     vecScale sep sParam
 
@@ -302,7 +290,7 @@ oneboid b boids noticeFood foods=
       v = velocity b
       v' = foldl' vecAdd (Vec2 0 0) [ v, c, s, a, (edge_repel p), f ]
       -- starving boids move slower
-      v'' = limiter (vecScale v' (1.005-0.5*(hunger b)^2)) vLimit
+      v'' = limiter (vecScale v' (1.005-0.2*(hunger b)^2)) vLimit
       p' = vecAdd p v''
       maybefood = find ( \foodParticle -> (euclidean p (fposition foodParticle)) <= epsilon )
                   foods
@@ -474,7 +462,6 @@ serialize (a:as) foods = let (b, newFoods) = a foods
                              (bs, finalFood) = serialize as newFoods in
     (b:bs, finalFood)
 
--- TODO type signature
 rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Bool],g) 
 rnlistWithRandGen 0 _max randGen = ([],randGen)
 rnlistWithRandGen n max randGen = (curBool:rest,randGenFinal)
