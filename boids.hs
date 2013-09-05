@@ -469,21 +469,6 @@ growFood n sp (foi:foods) randGen = (foiSpawn++restGrown,finalRanGen)
                                  in ([Food {fposition=newFPosition}],randGen''')
     (restGrown,finalRanGen) = growFood n sp foods randGenPass
     
--- writer traverse tree. modifed from mapKDTree
--- wtraverseTree :: KDTreeNode a -> [Food] ->  (Writer [Food] a -> Writer [Food] b) -> ([Food],[b])
-{-
-wtraverseTree Empty _ _ = ([],[]) -- Check this
-wtraverseTree (Node Empty pos boid right) foods f = 
-  (removedBoidList,foodlist)foods
-  where
-    (updatedboid,remainingFoods) = runWriter $ f ( writer(boid,foods) )
-    (foodlist,boidlist)          = wtraverseTree right remainingFoods f
-    removedBoidList              =if (hunger updatedboid) > 0 
-                                 then updatedboid:boidlist else boidlist
-wtraverseTree (Node (Node leftl positionl boidl rightl) pos boid right) foods f =
-    wtraverseTree (Node leftl positionl boidl (Node rightl pos boid right)) foods f
--}
--- :: [State [Food] Boid] -> State [Food] [Boids]
 serialize ::  [([Food] -> (Boid, [Food]))] -> [Food] -> ([Boid], [Food])
 serialize [] foods = ([], foods)
 serialize (a:as) foods = let (b, newFoods) = a foods
