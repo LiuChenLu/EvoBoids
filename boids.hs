@@ -302,7 +302,7 @@ oneboid b boids noticeFood foods=
       v = velocity b
       v' = foldl' vecAdd (Vec2 0 0) [ v, c, s, a, (edge_repel p), f ]
       -- starving boids move slower
-      v'' = limiter (vecScale v' (1.005-0.8*(hunger b)^2)) vLimit
+      v'' = limiter (vecScale v' (1.005-0.5*(hunger b)^2)) vLimit
       p' = vecAdd p v''
       maybefood = find ( \foodParticle -> (euclidean p (fposition foodParticle)) <= epsilon )
                   foods
