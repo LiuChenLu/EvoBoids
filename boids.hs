@@ -1,14 +1,14 @@
 import KDTree2d
 import Vec2
 import System.Random
-import System.IO.Unsafe
+--import System.IO.Unsafe
 import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.Pure.Game
 -- import Data.Monoid.Writer
-import Control.Monad.Writer.Lazy
+-- import Control.Monad.Writer.Lazy
 import Data.Maybe  (fromJust, isJust)
 import Data.List (minimumBy,find,delete,foldl')
 import Data.Function (on)
@@ -55,6 +55,12 @@ modelToScreen world (x,y) =
       yscale = (fromIntegral (pixHeight world)) / (height world)
   in
     (realToFrac $ x * xscale, realToFrac $ y * yscale)
+
+screenToModel :: World -> (Float, Float) -> Vec2
+screenToModel world (x,y) = 
+    Vec2 (realToFrac x / xscale) (realToFrac y / yscale)
+   where xscale = (fromIntegral (pixWidth world)) / (width world)
+         yscale = (fromIntegral (pixHeight world)) / (height world)
 
 scaleFactor :: World -> Float
 scaleFactor world =
@@ -155,7 +161,7 @@ initialize n sp sv = do
                 dbgA = vecZero}) : makeboids rest ids
   return $ makeboids nums [1..n]
 
---initializeFoods :: Int -> Double -> Double -> IO [Food]
+initializeFoods :: Int -> Double -> IO [Food]
 initializeFoods numBoids scalePos = do
     nums <- (rnlist $ 2*(numBoids `div `2)) -- for 2 boids, there will be one food. Let them STARVE! muhaha
     let makefoods [] = []
@@ -324,6 +330,32 @@ repel x maxx minx | (x - minx) < cap =   c / (x - minx)**2
     where c = 0.001
           cap = 2
 
+--              Position
+notice_point :: Vec2    -> Boid -> Boid
+notice_point pos b = b
+    {velocity = (flip limiter) vLimit $
+        velocity b `vecAdd` (vecScale (pos `vecSub` (bposition b)) 1.001)}
+
+
+-- =====
+-- Input
+-- =====
+-- Not sure if this is the best place for this...
+-- Maybe make a new section for input
+
+isClick :: Event -> Bool
+isClick (EventKey (MouseButton mb) _ _ _) = True
+isClick _ = False
+
+--handleInput :: Event -> a -> a
+handleInput
+  :: Functor f =>
+     World -> Event -> (f Boid, t, t1) -> (f Boid, t, t1)
+handleInput world (EventKey (MouseButton mb) _ _ (x,y)) (kd,fs,randGen) = 
+    (fmap f kd,fs,randGen)
+    where m_pos = screenToModel world (x,y)
+          f     = notice_point m_pos
+handleInput world _ (kd,fs,randGen) = (kd,fs,randGen)
 --
 -- Neighbor finding code
 --
@@ -445,7 +477,12 @@ serialize (a:as) foods = let (b, newFoods) = a foods
                              (bs, finalFood) = serialize as newFoods in
     (b:bs, finalFood)
 
--- iterationkd :: Int -> Double -> ViewPort -> Float -> (KDTreeNode Boid,[Food]) -> (KDTreeNode Boid, [Food])
+iterationkd :: RandomGen t1 =>
+     Int
+     -> Double
+     -> t
+     -> (KDTreeNode Boid, [Food], t1)
+     -> (KDTreeNode Boid, [Food], t1)
 iterationkd n sp step (w,foods,randGen) = 
   let 
     actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreeToList w
@@ -472,5 +509,5 @@ main =
     30
     tf
     (renderboids world)
-    (\_ w -> w)
+    (handleInput world)
     (iterationkd n sp)-- TODO what is happening here?? what?? is there side effects????

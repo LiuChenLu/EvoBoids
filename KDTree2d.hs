@@ -27,6 +27,11 @@ data KDTreeNode a =
   | Node !(KDTreeNode a) !Vec2 !a !(KDTreeNode a)
   deriving Show
 
+-- Note!  Do not map a function that changes the position of any boids in the tree, as you will break invarients.
+instance Functor KDTreeNode where
+    fmap f Empty = Empty
+    fmap f (Node l v a r) = Node (fmap f l) v (f a) (fmap f r)
+
 kdtreeToListOld :: (KDTreeNode a) -> [a]
 kdtreeToListOld Empty = []
 kdtreeToListOld (Node l _ x r) = [x]++(kdtreeToList l)++(kdtreeToList r)
