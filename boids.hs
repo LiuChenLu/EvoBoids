@@ -232,6 +232,8 @@ BOIDS LOGIC
 euclidean:: Vec2 -> Vec2 -> Double
 euclidean (Vec2 x1 y1) (Vec2 x2 y2) = sqrt ( (x1-x2)^2 + (y1-y2)^2 )
 
+-- hungrier boids want food more
+-- TODO make noticing foods better if there're more boids
 seekFood :: Boid -> [Food] -> Vec2
 seekFood b foods = 
     let p = bposition b
@@ -289,25 +291,28 @@ sizeOfVec v1 = sqrt((x1)^2+(y1)^2)
     where (Vec2 x1 y1)=v1
 
 -- one boid
+-- TODO make the rate of starvation dependant on scaleFactor to avoid boids in larger
+-- worlds from starving too quickly
 oneboid :: Boid -> [Boid] -> [Food] -> (Boid,[Food])
 oneboid b boids foods=
   let c = cohesion b boids (cohesionScale b) `vecScale` 0.1
       s = separation b boids (separationScale b) `vecScale` 0.1
       a = alignment b boids (alignmentScale b) `vecScale` 0.1
       f = seekFood b foods `vecScale` 0.1
-      -- TODO starving boids will move slower
       p = bposition b
       v = velocity b
       v' = foldl' vecAdd (Vec2 0 0) [ v, c, s, a, (edge_repel p), f ]
-      v'' = limiter (vecScale v' 1.0025) vLimit
+      -- starving boids move slower
+      v'' = limiter (vecScale v' (1.005-0.8*(hunger b)^2)) vLimit
       p' = vecAdd p v''
       maybefood = find ( \foodParticle -> (euclidean p (fposition foodParticle)) <= epsilon )
                   foods
          -- maybefood is food that it can eat this round
       (remainingFoods,newhunger)=
         case  maybefood of
-         (Just food) -> (delete food foods, 0)
-         Nothing ->     (foods , (hunger b) + 0.2*(sizeOfVec v))
+         (Just food) -> if (hunger b) > 0.01 then (delete food foods, 0)
+                                             else (foods, (hunger b)+0.05*(sizeOfVec v)+0.005)
+         Nothing ->     (foods , (hunger b) + 0.05*(sizeOfVec v)+0.005)
   in
       (b { bposition = wraparound p',
                    velocity = v'',
@@ -440,22 +445,30 @@ wraparound (Vec2 x y) =
 
 -- there is a 1 in 100 chance that a new pice of food will appear on this iteration
 -- number of boids -> list of foods
--- TODO make foods grow in clusters to reward flocking behaviour
-growFood :: RandomGen g => Int -> Double -> g -> ([Food],g)
-growFood n sp randGen = (foods,finalRanGen)
+-- food grows in clusters to promote flocking behaviour
+growFood :: RandomGen g => Int -> Double -> [Food] -> g-> ([Food],g)
+growFood n sp [] randGen = (newSpawn,finalRanGen)
     where
-    (i,randGen')  = randomR (0,100) randGen
-    (foods,finalRanGen)= if i>n 
-                         then ([],randGen') 
-                         else
-                          let 
-                           (a,randGen'') = randomR (0,1) randGen'
-                           (b,randGen''')= randomR (0,1) randGen''
-                          in
-                           ([Food {fposition=Vec2(sp*(0.5-a)/2.0) (sp*(0.5-b)/2.0)}],
-                            randGen''')
-       
+    (i,randGen')=randomR (1,100) randGen
+    (newSpawn,finalRanGen) = if i>n then ([],randGen')
+                             else 
+                                 let (a,randGen'') = randomR (0,1) randGen'
+                                     (b,randGen''')= randomR (0,1) randGen''
+                                     newFPosition  = Vec2(sp*(0.5-a)) (sp*(0.5-b))                                          in ([Food {fposition=newFPosition}],randGen''')
 
+growFood n sp (foi:foods) randGen = (foiSpawn++restGrown,finalRanGen)
+    where
+    (i,randGen')  = randomR (1,200) randGen
+    (foiSpawn,randGenPass) = if i>n
+                             then ([],randGen')
+                             else
+                                 let (a,randGen'') = randomR ((-1/2),1/2) randGen'
+                                     (b,randGen''')= randomR ((-1/2),1/2) randGen''
+                                     newFPosition  = vecAdd (fposition foi)
+                                                            (Vec2 a b)
+                                 in ([Food {fposition=newFPosition}],randGen''')
+    (restGrown,finalRanGen) = growFood n sp foods randGenPass
+    
 -- writer traverse tree. modifed from mapKDTree
 -- wtraverseTree :: KDTreeNode a -> [Food] ->  (Writer [Food] a -> Writer [Food] b) -> ([Food],[b])
 {-
@@ -478,24 +491,28 @@ serialize (a:as) foods = let (b, newFoods) = a foods
     (b:bs, finalFood)
 
 iterationkd :: RandomGen t1 =>
-     Int
-     -> Double
+        Double
      -> t
      -> (KDTreeNode Boid, [Food], t1)
      -> (KDTreeNode Boid, [Food], t1)
-iterationkd n sp step (w,foods,randGen) = 
+iterationkd sp step (w,foods,randGen) = 
   let 
-    actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreeToList w
+    -- the list of boids, converted from kdtree
+    kdtreetolist = kdtreeToList w
+    n = length kdtreetolist
+    actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreetolist
     (zombieBoids,rfoods) = serialize actions foods
     boids = filter (\b->(hunger b) < 1) zombieBoids
-    (addedFood,randGen') = growFood n sp randGen 
+    (addedFood,randGen') = if (length foods) > 2*n 
+                           then ([],randGen)
+                           else growFood n sp foods randGen 
   in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen')
 
 main :: IO ()
 main = 
   let sp = 10.0
       sv = 0.5
-      n  = 5 in do
+      n  = 5  in do
   randGen3 <- getStdGen
   (bs) <- initialize n sp sv -- boids starting
   (fs) <- initializeFoods n sp -- foods starting
@@ -510,4 +527,4 @@ main =
     tf
     (renderboids world)
     (handleInput world)
-    (iterationkd n sp)-- TODO what is happening here?? what?? is there side effects????
+    (iterationkd sp)-- TODO what is happening here?? what?? is there side effects????
