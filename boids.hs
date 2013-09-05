@@ -223,7 +223,7 @@ BOIDS LOGIC
 --}
 
 -- food seeking behaviour
-euclidean :: Vec2 -> Vec2 -> Double
+euclidean:: Vec2 -> Vec2 -> Double
 euclidean (Vec2 x1 y1) (Vec2 x2 y2) = sqrt ( (x1-x2)^2 + (y1-y2)^2 )
 
 seekFood :: Boid -> [Food] -> Vec2
@@ -278,10 +278,9 @@ alignment b boids a =
   in
    vecScale (vecSub v' (velocity b)) a
 
-distance :: Vec2 -> Vec2 -> Double
-distance v1 v2 = sqrt((x1-x2)^2+(y1-y2)^2)
+sizeOfVec :: Vec2 -> Double
+sizeOfVec v1 = sqrt((x1)^2+(y1)^2)
     where (Vec2 x1 y1)=v1
-          (Vec2 x2 y2)=v2
 
 -- one boid
 oneboid :: Boid -> [Boid] -> [Food] -> (Boid,[Food])
@@ -289,19 +288,20 @@ oneboid b boids foods=
   let c = cohesion b boids (cohesionScale b) `vecScale` 0.1
       s = separation b boids (separationScale b) `vecScale` 0.1
       a = alignment b boids (alignmentScale b) `vecScale` 0.1
-      f = seekFood b foods
+      f = seekFood b foods `vecScale` 0.1
+      -- TODO starving boids will move slower
       p = bposition b
       v = velocity b
       v' = foldl' vecAdd (Vec2 0 0) [ v, c, s, a, (edge_repel p), f ]
       v'' = limiter (vecScale v' 1.0025) vLimit
       p' = vecAdd p v''
-      maybefood = find ( \foodParticle -> (distance p (fposition foodParticle)) <= epsilon )
+      maybefood = find ( \foodParticle -> (euclidean p (fposition foodParticle)) <= epsilon )
                   foods
          -- maybefood is food that it can eat this round
       (remainingFoods,newhunger)=
         case  maybefood of
          (Just food) -> (delete food foods, 0)
-         Nothing ->     (foods , (hunger b) + 0.01)
+         Nothing ->     (foods , (hunger b) + 0.2*(sizeOfVec v))
   in
       (b { bposition = wraparound p',
                    velocity = v'',
@@ -408,11 +408,12 @@ wraparound (Vec2 x y) =
 
 -- there is a 1 in 100 chance that a new pice of food will appear on this iteration
 -- number of boids -> list of foods
+-- TODO make foods grow in clusters to reward flocking behaviour
 growFood :: RandomGen g => Int -> Double -> g -> ([Food],g)
 growFood n sp randGen = (foods,finalRanGen)
     where
     (i,randGen')  = randomR (0,100) randGen
-    (foods,finalRanGen)= if i==(1::Int) 
+    (foods,finalRanGen)= if i>n 
                          then ([],randGen') 
                          else
                           let 
@@ -448,7 +449,8 @@ serialize (a:as) foods = let (b, newFoods) = a foods
 iterationkd n sp step (w,foods,randGen) = 
   let 
     actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreeToList w
-    (boids,rfoods) = serialize actions foods
+    (zombieBoids,rfoods) = serialize actions foods
+    boids = filter (\b->(hunger b) < 1) zombieBoids
     (addedFood,randGen') = growFood n sp randGen 
   in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen')
 
