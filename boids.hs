@@ -115,18 +115,32 @@ renderfoods world foods =
 renderboids :: (RandomGen g) => World -> (KDTreeNode Boid , [Food], g) -> Picture
 renderboids world (bs,fs,_gen) =
     (Pictures $ (mapKDTree bs (renderboid world))++(renderfoods world fs))
+{--
+==========================================================================
+random generation stuff
+==========================================================================
+--}
+rnlistDouble :: RandomGen g => Int -> Double -> g -> ([Double],g) 
+rnlistDouble 0 _max randGen = ([],randGen)
+rnlistDouble n max randGen = (cur:rest,randGenFinal)
+  where
+    (cur,nextRanGen)=randomR (0,max) randGen
+    (rest,randGenFinal)=rnlistDouble (n-1) max nextRanGen
+
+
+rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Int],g) 
+rnlistWithRandGen 0 _max randGen = ([],randGen)
+rnlistWithRandGen n max randGen = (cur:rest,randGenFinal)
+    where
+        (cur,nextRanGen)=randomR (0,max) randGen
+        (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
 
 {--
-
 ==========================================================================
 INITIALIZATION
 ==========================================================================
-
 --}
 
-rnlist :: Int -> IO [Double]
-rnlist n = do
-  mapM (\_ -> randomRIO (0,1)) [1..n]
 
 -- sp is scale position
 -- sv is scale velocity
@@ -465,21 +479,6 @@ serialize [] foods = ([], foods)
 serialize (a:as) foods = let (b, newFoods) = a foods
                              (bs, finalFood) = serialize as newFoods in
     (b:bs, finalFood)
-
-rnlistDouble :: RandomGen g => Int -> Double -> g -> ([Double],g) 
-rnlistDouble 0 _max randGen = ([],randGen)
-rnlistDouble n max randGen = (cur:rest,randGenFinal)
-  where
-    (cur,nextRanGen)=randomR (0,max) randGen
-    (rest,randGenFinal)=rnlistDouble (n-1) max nextRanGen
-
-
-rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Int],g) 
-rnlistWithRandGen 0 _max randGen = ([],randGen)
-rnlistWithRandGen n max randGen = (cur:rest,randGenFinal)
-    where
-        (cur,nextRanGen)=randomR (0,max) randGen
-        (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
 
 zipApply :: [(a->b)] -> [a] -> [b]
 zipApply [] [] = []
