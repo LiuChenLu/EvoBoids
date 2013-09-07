@@ -9,6 +9,7 @@ import Graphics.Gloss.Interface.Pure.Game
 import Data.Maybe  (fromJust, isJust)
 import Data.List (minimumBy,find,delete,foldl')
 import Data.Function (on)
+import Data.Array (Array(..),(!),listArray)
 
 data Food = Food { fposition :: Vec2} deriving (Eq)
 
@@ -129,31 +130,34 @@ rnlist n = do
 
 -- sp is scale position
 -- sv is scale velocity
-initialize :: Int -> Double -> Double -> IO [Boid]
-initialize n sp sv = do
-  nums <- rnlist (n*7)
-  let makeboids [] [] = []
-      makeboids (a:b:c:d:e:f:g:rest) (id:ids) =
-         (Boid {identifier = id,
-                velocity = Vec2 (sv*(0.5 - a)/2.0) (sv*(0.5 - b)/2.0),
-                bposition = Vec2 (sp*(0.5 - c)/2.0) (sp*(0.5 - d)/2.0),
-                cohesionScale = maxcohesion * e,
-                separationScale = maxseparation * f,
-                alignmentScale = maxalignment * g,
-                hunger = 0,
-                dbgC = vecZero,
-                dbgS = vecZero,
-                dbgA = vecZero}) : makeboids rest ids
-  return $ makeboids nums [1..n]
+initializeBoids :: RandomGen g => Int -> Double -> Double -> g -> ([Boid],g)
+initializeBoids n sp sv randGen = (makeboids nums [1..n], randGen')
+ where
+  (nums,randGen') = rnlistDouble (n*7) 1.0 randGen
+  makeboids [] [] = []
+  makeboids (a:b:c:d:e:f:g:rest) (id:ids) =
+    (Boid {identifier = id,
+           velocity = Vec2 (sv*(0.5 - a)/2.0) (sv*(0.5 - b)/2.0),
+           bposition = Vec2 (sp*(0.5 - c)/2.0) (sp*(0.5 - d)/2.0),
+           cohesionScale = maxcohesion * e,
+           separationScale = maxseparation * f,
+           alignmentScale = maxalignment * g,
+           hunger = 0,
+           dbgC = vecZero,
+           dbgS = vecZero,
+           dbgA = vecZero}) : makeboids rest ids
 
-initializeFoods :: Int -> Double -> IO [Food]
-initializeFoods numBoids scalePos = do
-    nums <- (rnlist $ 2*(numBoids `div `2)) -- for 2 boids, there will be one food. Let them STARVE! muhaha
-    let makefoods [] = []
-        makefoods (a:b:rest) = 
+-- formerly it goes to IO [Food]
+initializeFoods :: RandomGen g => Int -> Double -> g -> ([Food],g)
+initializeFoods numBoids scalePos randGen = 
+  let
+    (nums,randGen') = (rnlistDouble (2*(numBoids `div `2)) 1.0 randGen) -- for 2 boids, there will be one food. Let them STARVE! muhaha
+    makefoods [] = []
+    makefoods (a:b:rest) = 
             Food {fposition = Vec2 (scalePos*(0.5-a)/2.0) (scalePos*(0.5-b)/2.0)} :
                                makefoods rest
-    return (makefoods nums)
+  in
+    ((makefoods nums),randGen')
 {--
 
 ==========================================================================
@@ -462,12 +466,19 @@ serialize (a:as) foods = let (b, newFoods) = a foods
                              (bs, finalFood) = serialize as newFoods in
     (b:bs, finalFood)
 
-rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Bool],g) 
+rnlistDouble :: RandomGen g => Int -> Double -> g -> ([Double],g) 
+rnlistDouble 0 _max randGen = ([],randGen)
+rnlistDouble n max randGen = (cur:rest,randGenFinal)
+  where
+    (cur,nextRanGen)=randomR (0,max) randGen
+    (rest,randGenFinal)=rnlistDouble (n-1) max nextRanGen
+
+
+rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Int],g) 
 rnlistWithRandGen 0 _max randGen = ([],randGen)
-rnlistWithRandGen n max randGen = (curBool:rest,randGenFinal)
+rnlistWithRandGen n max randGen = (cur:rest,randGenFinal)
     where
-        (curInt,nextRanGen)=randomR (0,max) randGen
-        curBool=(curInt==0)
+        (cur,nextRanGen)=randomR (0,max) randGen
         (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
 
 zipApply :: [(a->b)] -> [a] -> [b]
@@ -484,7 +495,8 @@ iterationkd sp step (w,foods,randGen) =
     -- the list of boids, converted from kdtree
     kdtreetolist = kdtreeToList w
     n = length kdtreetolist
-    (listOfBool,randGen')=rnlistWithRandGen n 2 randGen
+    (listOfInt,randGen')=rnlistWithRandGen n 2 randGen
+    listOfBool = map (\i->(i==0)) listOfInt
     actions = map (\b -> oneboid b (findNeighbors w b)) $ kdtreetolist
     actions'= zipApply actions listOfBool
     (zombieBoids,rfoods) = serialize actions' foods
@@ -492,20 +504,74 @@ iterationkd sp step (w,foods,randGen) =
     (addedFood,randGen'') = if (length foods) > 2*n 
                            then ([],randGen')
                            else growFood n sp foods randGen' 
-  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, addedFood++rfoods, randGen'')
+  in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree boids, 
+      addedFood++rfoods,
+      randGen'')
+
+babyMake :: RandomGen g => Array Int Boid -> Int -> Int -> Int -> Double -> Double -> g 
+                           -> ([Boid],g)
+babyMake _survivingBoids _numSurviors 0 _curID _sp _sv randGen = ([],randGen)
+babyMake survivingBoids numSurvivors toBuild curID sp sv randGen =
+  let
+    (index1,randGen')  =randomR (0,numSurvivors-1) randGen
+    (index2,randGen'') =randomR (0,numSurvivors-1) randGen'
+    (i,     randGen''')=randomR (0,1) randGen''
+    parent1 = survivingBoids ! index1
+    parent2 = survivingBoids ! index2
+    ([a,b,c,d],randGen'''') = rnlistDouble 4 1 randGen'''
+    (restBabyBoids,finalRandGen)
+      = babyMake survivingBoids numSurvivors (toBuild-1) (curID+1) sp sv randGen''''
+  in
+    (Boid { identifier = curID,
+            velocity = Vec2 (sv*(0.5 - a)/2.0) (sv*(0.5 - b)/2.0),
+            bposition = Vec2 (sp*(0.5 - c)/2.0) (sp*(0.5 - d)/2.0),
+            cohesionScale = i*(cohesionScale parent1) + (1-i)*(cohesionScale parent2),
+            separationScale = i*(separationScale parent1) + (1-i)*(separationScale parent2),
+            alignmentScale = i*(alignmentScale parent1) + (1-i)*(alignmentScale parent2),
+            hunger=0,
+            dbgC = vecZero,
+            dbgS = vecZero,
+            dbgA = vecZero} 
+       : restBabyBoids,
+     finalRandGen)
+-- TODO maybe base babyMake on step instead of numBoids?
+-- n is the initial number of boids
+iteration :: RandomGen t1 =>
+        Double
+     -> Double
+     -> Int
+     -> t
+     -> (KDTreeNode Boid, [Food], t1)
+     -> (KDTreeNode Boid, [Food], t1)
+iteration sp sv n step (w,foods,randGen) =
+  let kdlist = kdtreeToList w
+      len    = length kdlist
+  in
+    if len > div n 3 
+    then iterationkd sp step (w,foods,randGen)
+    else 
+      let
+        (babyBoidList,randGen')
+            = babyMake (listArray (0,len-1) kdlist) len n 0 sp sv randGen
+        (initializedFoods, randGen'')=initializeFoods n sp randGen
+      in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree babyBoidList,
+          initializedFoods,
+          randGen'')
 
 main :: IO ()
 main = 
   let sp = 10.0
       sv = 0.5
-      n  = 50  in do
-  randGen3 <- getStdGen
-  (bs) <- initialize n sp sv -- boids starting
-  (fs) <- initializeFoods n sp -- foods starting
-    -- tf is (tree,food)
+      n  = 50
+  in
+  do
+  randGen <- getStdGen
   let
+    (bs,randGen')  = initializeBoids n sp sv randGen-- boids starting
+    (fs,randGen'') = initializeFoods n sp randGen' -- foods starting
+    -- tf is (tree,food)
     tf = (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree bs, -- newKDTree
-          fs, randGen3)
+          fs, randGen'')
   play
     (InWindow "Boids" (pixWidth world, pixHeight world) (10,10))
     (greyN 0.1)
@@ -513,4 +579,4 @@ main =
     tf
     (renderboids world)
     (handleInput world)
-    (iterationkd sp) 
+    (iteration sp sv n) 
