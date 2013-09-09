@@ -130,7 +130,7 @@ rnlistDouble n max randGen = if n<0 then ([],randGen) else (cur:rest,randGenFina
 
 rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Int],g) 
 rnlistWithRandGen 0 _max randGen = ([],randGen)
-rnlistWithRandGen n max randGen = if n<- then ([],randGen) else (cur:rest,randGenFinal)
+rnlistWithRandGen n max randGen = if n<0 then ([],randGen) else (cur:rest,randGenFinal)
     where
         (cur,nextRanGen)=randomR (0,max) randGen
         (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
