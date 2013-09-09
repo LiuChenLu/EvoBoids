@@ -1,0 +1,86 @@
+=====================================================================
+Evolutionary Boids
+=====================================================================
+
+=====================================================================
+ABOUT
+
+Boids are either a species of boa snake or a simulated flocking
+organism that mimics birds. Though programming a real boa snake would
+be lots of fun, this project predominately deals with Boids as
+defined by the second definition.
+
+Members of the initial Boids population has randomized traits in
+affinity, separation, and cohesion. These are the Boid's flocking 
+parameters (explained below). Each Boid must find food in order to 
+survive. If a Boid does not find food after 100 iterations, it will
+starve to death and be removed from the genetic pool. 
+
+When the total Boid population drops to a critical low point, 
+remaining Boids will reproduce. Each Boid has the same chance of 
+reproducing with any other Boid and produce a child that is the 
+(randomly) weighted average of the parents' traits. 
+
+After several evolutionary cycles (usually about 5), all Boids will 
+look very similar! Almost always a population with low-ish cohesion, 
+high separation and low-ish alignment is selected for.
+
+Try changing some parameters in the code and see what population is
+selected for in your enviroment!
+
+=====================================================================
+Boids logic
+
+-the circles around each Boid represent its traits. More vivid the 
+ ring, the more heavily the trait is favoured
+ -inner-most (red) circle represents cohesion.
+  A Boid with high cohesion will really want to fly towards the
+  centroid of nearby flocks.
+ -middle circle (green) represent separation.
+  A Boid with high separation prefers to keep its personal space from
+  other Boids.
+ -the outter circle represent alignment
+  A boid with high alignment want to fly in the same direction as its
+  neighbours
+-hungry boids will move slower in general
+-hungry boids are more motivated to move towards food
+-flocking is rewarded by:
+ -all Boids have a non zero chance of not noticing food
+ -food tends to appear in clusters
+
+=====================================================================
+FILES
+
+-boids.hs
+-hel-boids.cabal
+-KDTree2d.hs
+-Makefile
+-Vec2.hs
+
+=====================================================================
+USAGE
+
+1. pull this into a directory of your choice
+2. make sure you install cabal and Haskell
+3. run "make" in EvoBoids
+4. in a terminal, run "hel-boids"
+
+=====================================================================
+KNOWN BUGS
+
+- memory leak/infinite loop/unknown reason for crashing whenever
+  there is a certain number of Boids on screen
+  Cause unknown
+
+=====================================================================
+AUTHORS
+
+-Liu Chen Lu and Theodor Belaire
+-basic non evolutionary Boid implimentation forked from mjsottile
+
+=====================================================================
+CONTACT
+
+-Liu:  lclu@uwaterloo.ca
+-Theo: N/A
+
