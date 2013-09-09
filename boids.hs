@@ -1,12 +1,12 @@
 import KDTree2d
 import Vec2
 import System.Random
-import Debug.Trace
+-- import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Data.Display
 import Graphics.Gloss.Data.Picture
 import Graphics.Gloss.Interface.Pure.Game
-import Data.Maybe  (fromJust, isJust)
+-- import Data.Maybe  (fromJust, isJust)
 import Data.List (minimumBy,find,delete,foldl')
 import Data.Function (on)
 import Data.Array (Array(..),(!),listArray)
@@ -552,7 +552,7 @@ iteration sp sv n step (w,foods,randGen) =
     else 
       let
         (babyBoidList,randGen')
-            = (traceStack ("calling babyMake with len "++show len) (babyMake (listArray (0,len-1) kdlist) len (n-len) 0 sp sv randGen))
+            = babyMake (listArray (0,len-1) kdlist) len (n-len) 0 sp sv randGen
         (initializedFoods, randGen'')=
            if 2*(length foods)>n 
            then ([],randGen')
