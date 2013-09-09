@@ -546,15 +546,15 @@ iteration sp sv n step (w,foods,randGen) =
   let kdlist = kdtreeToList w
       len    = length kdlist
   in
-    if len > div n 3 
+    if len >= div n 3 
     then iterationkd sp step (w,foods,randGen)
     else 
       let
         (babyBoidList,randGen')
-            = babyMake (listArray (0,len-1) kdlist) len n 0 sp sv randGen
-        (initializedFoods, randGen'')=initializeFoods n sp randGen
-      in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree babyBoidList,
-          initializedFoods,
+            = babyMake (listArray (0,len-1) kdlist) len (n-len) 0 sp sv randGen
+        (initializedFoods, randGen'')=initializeFoods (n-(length foods)) sp randGen
+      in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree (babyBoidList++kdlist),
+          initializedFoods++foods,
           randGen'')
 
 main :: IO ()
