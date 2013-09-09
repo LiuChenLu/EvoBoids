@@ -122,7 +122,7 @@ random generation stuff
 --}
 rnlistDouble :: RandomGen g => Int -> Double -> g -> ([Double],g) 
 rnlistDouble 0 _max randGen = ([],randGen)
-rnlistDouble n max randGen = (cur:rest,randGenFinal)
+rnlistDouble n max randGen = if n<0 then ([],randGen) else (cur:rest,randGenFinal)
   where
     (cur,nextRanGen)=randomR (0,max) randGen
     (rest,randGenFinal)=rnlistDouble (n-1) max nextRanGen
@@ -130,7 +130,7 @@ rnlistDouble n max randGen = (cur:rest,randGenFinal)
 
 rnlistWithRandGen :: RandomGen g => Int -> Int -> g -> ([Int],g) 
 rnlistWithRandGen 0 _max randGen = ([],randGen)
-rnlistWithRandGen n max randGen = (cur:rest,randGenFinal)
+rnlistWithRandGen n max randGen = if n<- then ([],randGen) else (cur:rest,randGenFinal)
     where
         (cur,nextRanGen)=randomR (0,max) randGen
         (rest,randGenFinal)=rnlistWithRandGen (n-1) max nextRanGen
@@ -533,6 +533,7 @@ babyMake survivingBoids numSurvivors toBuild curID sp sv randGen =
             dbgA = vecZero} 
        : restBabyBoids,
      finalRandGen)
+
 -- TODO maybe base babyMake on step instead of numBoids?
 -- n is the initial number of boids
 iteration :: RandomGen t1 =>
@@ -546,13 +547,16 @@ iteration sp sv n step (w,foods,randGen) =
   let kdlist = kdtreeToList w
       len    = length kdlist
   in
-    if len >= div n 3 
+    if len >= div n 2 
     then iterationkd sp step (w,foods,randGen)
     else 
       let
         (babyBoidList,randGen')
-            = babyMake (listArray (0,len-1) kdlist) len (n-len) 0 sp sv randGen
-        (initializedFoods, randGen'')=initializeFoods (n-(length foods)) sp randGen
+            = (traceStack ("calling babyMake with len "++show len) (babyMake (listArray (0,len-1) kdlist) len (n-len) 0 sp sv randGen))
+        (initializedFoods, randGen'')=
+           if 2*(length foods)>n 
+           then ([],randGen')
+           else initializeFoods (n-2*(length foods)) sp randGen
       in (foldl (\t b -> kdtAddPoint t (bposition b) b) newKDTree (babyBoidList++kdlist),
           initializedFoods++foods,
           randGen'')

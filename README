@@ -67,10 +67,7 @@ USAGE
 
 =====================================================================
 KNOWN BUGS
-
-- memory leak/infinite loop/unknown reason for crashing whenever
-  there is a certain number of Boids on screen
-  Cause unknown
+-None! yay!
 
 =====================================================================
 AUTHORS
